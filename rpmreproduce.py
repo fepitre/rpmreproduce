@@ -360,9 +360,10 @@ class Rebuilder:
         base.conf.reposdir = []
         base.read_comps(arch_filter=True)
 
-        for repo_src in self.extra_repository_files:
-            repo_dst = os.path.join(reposdir, os.path.basename(repo_src))
-            os.symlink(repo_src, repo_dst)
+        if self.extra_repository_files:
+            for repo_src in self.extra_repository_files:
+                repo_dst = os.path.join(reposdir, os.path.basename(repo_src))
+                os.symlink(repo_src, repo_dst)
 
         base.conf.reposdir = os.path.join(self.tempdnfdir, 'repos')
         base.read_all_repos()
@@ -391,9 +392,11 @@ class Rebuilder:
         rpmfname = pathinfo.signed(
             package.to_dict(), self.buildinfo.get_fedora_keyid())
         rpminfo = kojicli.getRPM(package.to_rpmfname())
-        if not rpmfname and not rpminfo:
+        if not rpmfname or not rpminfo:
             return
         # we need to determinate the source package for the baseurl
+        if not rpminfo.get('buildroot_id', None):
+            return
         buildroot = kojicli.getBuildroot(rpminfo['buildroot_id'])
         task = kojicli.getTaskInfo(buildroot['task_id'], request=True)
         # tasks/6906/41136906/chkconfig-1.11-6.fc32.src.rpm

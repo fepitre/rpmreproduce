@@ -38,7 +38,10 @@ optional arguments:
 #### EXAMPLES
 
 ```
-$ ./rpmreproduce.py --output=./artifacts --builder=mock tests/data/qubes-core-agent-4.1.23-1.fc33.x86_64.buildinfo
+$ ./rpmreproduce.py --debug --output=./artifacts --builder=mock \
+    --extra-repository-file tests/repos/qubes-r4.repo \
+    --extra-repository-key tests/keys/RPM-GPG-KEY-qubes-4-primary \
+    tests/data/qubes-core-agent-4.1.23-1.fc32.x86_64.buildinfo
 ```
 
 ####  BUILDERS
@@ -53,3 +56,7 @@ The desired backend is chosen using the --builder option. The default is `none`.
 
 > Note: Ensure to have `dev` option for the mount point where OUTPUT is. If not, `mock` will fail with
 > such error like: `/dev/null: Permission denied`.
+
+> Note: On QubesOS, when adding user in `mock` group you would certainly need to log in again `user`. Simply
+> `sudo su user`.
+```
