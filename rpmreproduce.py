@@ -305,8 +305,8 @@ class Rebuilder:
                 retries -= 1
         raise RebuilderException("Failed to get response: max retries")
 
-    def download(self, url, dst):
-        if os.path.exists(dst):
+    def download(self, url, dst, force=False):
+        if os.path.exists(dst) and not force:
             logger.debug("Already downloaded: {}".format(url))
         else:
             logger.debug("Downloading {} to {}".format(url, dst))
@@ -453,11 +453,17 @@ class Rebuilder:
             os.makedirs(self.rpmsdir, exist_ok=True)
             for rpmurl in urls:
                 rpmfname = os.path.join(self.rpmsdir, os.path.basename(rpmurl))
+                rpmfname_UNTRUSTED = rpmfname + '.UNTRUSTED'
                 self.required_rpms.append(rpmfname)
-                self.download(rpmurl, rpmfname)
-                if self.get_rpm_sign_keyid(rpmfname) not in allowed_keys:
+                if os.path.exists(rpmfname):
+                    logger.debug(
+                        "Already downloaded and verified: {}".format(rpmfname))
+                    continue
+                self.download(rpmurl, rpmfname_UNTRUSTED, force=True)
+                if self.get_rpm_sign_keyid(rpmfname_UNTRUSTED) not in allowed_keys:
                     raise RebuilderException(
                         "Failed to verify RPM signature: {}".format(rpmfname))
+                os.rename(rpmfname_UNTRUSTED, rpmfname)
         except RebuilderException as e:
             raise RebuilderException(str(e))
         except OpenPGPException as e:
