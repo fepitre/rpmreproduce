@@ -15,8 +15,8 @@ fi
 
 localdir="$(readlink -f "$(dirname "$0")")"
 
-QUBES_OPTS="$COMMON_OPTS --builder mock"
-QUBES_OPTS="$QUBES_OPTS --extra-repository-file $localdir/repos/qubes-r4.repo --extra-repository-key $localdir/keys/RPM-GPG-KEY-qubes-4-primary"
+COMMON_OPTS="$COMMON_OPTS --builder mock"
+QUBES_OPTS="--extra-repository-file $localdir/repos/qubes-r4.repo --extra-repository-key $localdir/keys/RPM-GPG-KEY-qubes-4-primary"
 #QUBES_OPTS="$QUBES_OPTS --gpg-verify --gpg-verify-key $localdir/keys/RPM-GPG-KEY-qubes-4-primary"
 
 echo_info() {
@@ -51,30 +51,29 @@ EOL
 
 do_build() {
     buildinfo="$1"
-    parsed_name="$(basename "$buildinfo" | sed 's/.buildinfo//')"
+    parsed_name="$(basename "$buildinfo")"
+    for pattern in .buildinfo -buildinfo .rpm; do
+        parsed_name="${parsed_name/$pattern/}"
+    done
     package="$(get_srcpkgname "$parsed_name")"
     version="$(get_srcpkgver "$parsed_name")"
     output="/tmp/sources/$package/$version"
-    DEBREBUILD_OPTS="$QUBES_OPTS"
-    if [[ "$buildinfo" =~ .unreproducible$ ]]; then
-        DEBREBUILD_OPTS="$DEBREBUILD_OPTS --no-checksums-verification"
+    RPMREPRODUCE_OPTS="$COMMON_OPTS"
+    if [[ "$package" =~ ^qubes- ]] || [[ "$buildinfo" =~ ^.*qubes-os.org ]]; then
+        RPMREPRODUCE_OPTS="$RPMREPRODUCE_OPTS $QUBES_OPTS"
     fi
-    "$localdir"/../rpmreproduce.py $DEBREBUILD_OPTS --output "$output" "$buildinfo" || return 1
+    "$localdir"/../rpmreproduce.py $RPMREPRODUCE_OPTS --output "$output" "$buildinfo" || return 1
     cd "$output"
     ln -sf $package*.buildinfo buildinfo
     ln -sf rebuild*.link metadata
 }
 
-buildinfos=("$localdir"/data/*.buildinfo*)
-#buildinfos+=(
-#    "https://deb.qubes-os.org/r4.1/vm/pool/main/libc/libcomps/libcomps_0.1.15-2+deb11u1_amd64.buildinfo"
-#    "https://deb.qubes-os.org/r4.1/vm/pool/main/q/qubes-gui-agent/qubes-gui-agent_4.1.15-1+deb11u1_amd64.buildinfo"
-#)
+buildinfos=("$localdir"/data/*buildinfo*)
 failed_buildinfos=()
 
 for f in ${buildinfos[*]}; do
     bn_buildinfo="$(basename "$f")"
-    echo_info "DEBREBUILD: $bn_buildinfo"
+    echo_info "RPMREPRODUCE: $bn_buildinfo"
     if do_build "$f"; then
         echo_ok "SUCCESS: $f"
     else

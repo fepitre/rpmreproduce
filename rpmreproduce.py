@@ -21,6 +21,7 @@
 import argparse
 import dnf
 import dnf.conf
+import glob
 import grp
 import koji
 import logging
@@ -55,11 +56,35 @@ class RebuilderException(Exception):
     pass
 
 
+def randomName():
+    return next(tempfile._get_candidate_names())
+
+
 def parsePkg(pkg):
     pkg = pkg.strip()
     if koji.check_NVRA(pkg):
         pkg = koji.parse_NVRA(pkg)
         return Package(**pkg)
+
+
+def get_file_from_rpm(rpm, src, dst):
+    # TODO: this is not perfect, any builtin function in RPM related libs?
+    tmpdir = tempfile.mkdtemp(prefix='rpm-')
+    try:
+        # extract RPM
+        subprocess.check_output(
+            "rpm2cpio {} | cpio -idm --quiet".format(rpm),
+            cwd=tmpdir, shell=True)
+        # allow glob
+        requested_files = glob.glob(os.path.join(tmpdir, src))
+        if not requested_files:
+            raise FileNotFoundError(src)
+        if len(requested_files) > 1:
+            os.makedirs(dst)
+        for f in requested_files:
+            shutil.copy2(f, dst)
+    finally:
+        shutil.rmtree(tmpdir)
 
 
 class Package:
@@ -69,15 +94,15 @@ class Package:
         self.release = release
         self.arch = arch
         self.epoch = epoch
+        self.chksum = kwargs.get("chksum", None)
         self.source_name = kwargs.get("source_name", None)
         self.url = kwargs.get("url", None)
+        self.sighdr_url = kwargs.get("sighdr_url", None)
 
-    def to_nvr(self):
+    def to_envr(self):
+        result = "{}-{}-{}".format(self.name, self.version, self.release)
         if self.epoch:
-            result = "{}:{}-{}-{}".format(
-                self.epoch, self.name, self.version, self.release)
-        else:
-            result = "{}-{}-{}".format(self.name, self.version, self.release)
+            result = f'{self.epoch}:{result}'
         return result
 
     def to_rpmfname(self):
@@ -89,12 +114,9 @@ class Package:
         return self.__dict__
 
     def __repr__(self):
+        result = f'{self.name}-{self.version}-{self.release}.{self.arch}'
         if self.epoch:
-            result = "{}:{}-{}-{}.{}".format(
-                self.epoch, self.name, self.version, self.release, self.arch)
-        else:
-            result = "{}-{}-{}.{}".format(
-                self.name, self.version, self.release, self.arch)
+            result = f'{self.epoch}:{result}'
         return result
 
 
@@ -106,6 +128,8 @@ class BuildInfo:
         self.architecture = None
         self.binary = None
         self.version = None
+        self.release = None
+        self.epoch = None
         self.build_path = None
         self.build_arch = None
         self.build_date = None
@@ -128,18 +152,28 @@ class BuildInfo:
                         self.source = item[1]
                     if item[0] == 'Architecture':
                         self.architecture = item[1].split()
+                    # Currently not in 1.0-rpm format
                     if item[0] == 'Binary':
                         self.binary = item[1].split()
                     if item[0] == 'Version':
                         self.version = item[1]
+                    if item[0] == 'Release':
+                        self.release = item[1]
+                    if item[0] == 'Epoch':
+                        # TODO: should we let 0 prefixing almost every package?
+                        if item[1] != "0":
+                            self.epoch = item[1]
                     if item[0] == 'Build-Path':
                         self.build_path = item[1]
                     if item[0] == 'Build-Architecture':
                         self.build_arch = item[1]
+                    # Currently not in 1.0-rpm format because that would
+                    # break buildinfo package reproducibility
                     if item[0] == 'Build-Date':
                         self.build_date = item[1]
                     if item[0] == 'Host-Architecture':
                         self.host_arch = item[1]
+                    # Currently not in 1.0-rpm format
                     if item[0].startswith('Checksums-'):
                         alg = item[0].replace('Checksums-', '').lower()
                         for line in item[1].lstrip('\n').split('\n'):
@@ -182,13 +216,15 @@ class BuildInfo:
         if not self.host_arch:
             self.host_arch = self.build_arch
         if not self.build_path:
-            self.build_path = "/build/{}-{}".format(
-                self.source, next(tempfile._get_candidate_names()))
+            self.build_path = "/build/{}-{}".format(self.source, randomName())
 
-        self.package = parsePkg('{}-{}.src'.format(self.source, self.version))
+        src_package = f'{self.source}-{self.version}-{self.release}.src'
+        if self.epoch:
+            src_package = f'{self.epoch}:{src_package}'
+        self.package = parsePkg(src_package)
 
     def __repr__(self):
-        return f'{self.source}-{self.version}'
+        return self.package.to_envr()
 
     def get_fedora_release(self):
         if not self.fedora_release:
@@ -252,41 +288,55 @@ class Rebuilder:
         self.cachedir = os.environ.get('CACHEDIR', os.path.join(
             self.tmpdir, 'rpmreproduce/cache'))
 
-        self.urlsdir = os.path.join(self.cachedir, 'urls')
         self.rpmsdir = os.path.join(self.cachedir, 'rpms')
         self.srpmsdir = os.path.join(self.cachedir, 'srpms')
 
         if buildinfo_file.startswith('http://') or \
                 buildinfo_file.startswith('https://'):
             try:
-                resp = self.get_response(buildinfo_file)
-                resp.raise_for_status()
                 # We store remote buildinfo in a temporary file
-                handle, buildinfo_file = tempfile.mkstemp(
+                fo, buildinfo_file = tempfile.mkstemp(
                     prefix="buildinfo-", dir=self.tmpdir)
-                with open(handle, 'w') as fd:
-                    fd.write(resp.text)
-            except (requests.exceptions.ConnectionError,
-                    requests.exceptions.HTTPError) as e:
-                raise RebuilderException("Cannot get buildinfo: {}".format(e))
+                koji.downloadFile(buildinfo_file, fo=fo)
+            except koji.GenericError as e:
+                raise RebuilderException(
+                    "Cannot get buildinfo: {}".format(str(e)))
         else:
             buildinfo_file = realpath(buildinfo_file)
 
-        if gpg_verify and gpg_verify_key:
-            gpg_env = OpenPGPEnvironment()
-            try:
-                gpg_env.import_key(gpg_verify_key, trust=True)
-                gpg_env.verify_file(buildinfo_file)
-            except OpenPGPException as e:
-                raise RebuilderException(
-                    "Failed to verify buildinfo: {}".format(str(e)))
-            finally:
-                gpg_env.close()
+        # if gpg_verify and gpg_verify_key:
+        #     gpg_env = OpenPGPEnvironment()
+        #     try:
+        #         gpg_env.import_key(gpg_verify_key, trust=True)
+        #         gpg_env.verify_file(buildinfo_file)
+        #     except OpenPGPException as e:
+        #         raise RebuilderException(
+        #             "Failed to verify buildinfo: {}".format(str(e)))
+        #     finally:
+        #         gpg_env.close()
 
-        self.buildinfo = BuildInfo(buildinfo_file)
-        if buildinfo_file.startswith(
-                os.path.join(self.tmpdir, 'buildinfo-')):
+        if buildinfo_file.endswith('.rpm'):
+            self.buildinfo = self.get_buildinfo_from_rpm(buildinfo_file)
+        else:
+            self.buildinfo = BuildInfo(buildinfo_file)
+
+        # clean downloaded buildinfo
+        if buildinfo_file.startswith(os.path.join(self.tmpdir, 'buildinfo-')):
             os.remove(buildinfo_file)
+
+    def get_buildinfo_from_rpm(self, rpm):
+        buildinfo_file = os.path.join(
+            self.tmpdir, 'buildinfo-' + randomName())
+        try:
+            get_file_from_rpm(
+                rpm, 'usr/lib/src/buildinfo/*.buildinfo', buildinfo_file)
+            buildinfo = BuildInfo(buildinfo_file)
+        except (subprocess.CalledProcessError, FileNotFoundError) as e:
+            raise RebuilderException(
+                "Cannot find buildinfo in RPM: {}".format(str(e)))
+        finally:
+            os.remove(buildinfo_file)
+        return buildinfo
 
     def get_env(self):
         env = []
@@ -294,6 +344,7 @@ class Rebuilder:
             env.append("{}=\"{}\"".format(key, val))
         return env
 
+    # TODO: user koji request_with_retry
     def get_response(self, url):
         retries = 3
         while retries:
@@ -305,6 +356,7 @@ class Rebuilder:
                 retries -= 1
         raise RebuilderException("Failed to get response: max retries")
 
+    # TODO: user koji downloadFile
     def download(self, url, dst, force=False):
         if os.path.exists(dst) and not force:
             logger.debug("Already downloaded: {}".format(url))
@@ -352,6 +404,7 @@ class Rebuilder:
         os.makedirs(installroot)
         os.makedirs(reposdir)
 
+        logger.debug("Preparing DNF cache...")
         base = dnf.Base()
         base.conf.cachedir = cachedir
         base.conf.installroot = installroot
@@ -359,6 +412,57 @@ class Rebuilder:
             self.buildinfo.get_fedora_release()
         base.conf.reposdir = []
         base.read_comps(arch_filter=True)
+
+        # Add Fedora repositories (base + updates)
+        fedora_repo = """
+[fedora]
+name=Fedora $releasever - $basearch
+metalink=https://mirrors.fedoraproject.org/metalink?repo=fedora-$releasever&arch=$basearch
+enabled=1
+countme=1
+metadata_expire=7d
+repo_gpgcheck=0
+type=rpm
+gpgcheck=1
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-fedora-$releasever-$basearch
+skip_if_unavailable=False
+
+[fedora-source]
+name=Fedora $releasever - Source
+metalink=https://mirrors.fedoraproject.org/metalink?repo=fedora-source-$releasever&arch=$basearch
+enabled=1
+metadata_expire=7d
+repo_gpgcheck=0
+type=rpm
+gpgcheck=1
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-fedora-$releasever-$basearch
+skip_if_unavailable=False
+
+[updates]
+name=Fedora $releasever - $basearch - Updates
+metalink=https://mirrors.fedoraproject.org/metalink?repo=updates-released-f$releasever&arch=$basearch
+enabled=1
+countme=1
+repo_gpgcheck=0
+type=rpm
+gpgcheck=1
+metadata_expire=6h
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-fedora-$releasever-$basearch
+skip_if_unavailable=False
+
+[updates-source]
+name=Fedora $releasever - Updates Source
+metalink=https://mirrors.fedoraproject.org/metalink?repo=updates-released-source-f$releasever&arch=$basearch
+enabled=1
+repo_gpgcheck=0
+type=rpm
+gpgcheck=1
+metadata_expire=6h
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-fedora-$releasever-$basearch
+skip_if_unavailable=False
+"""
+        with open(os.path.join(reposdir, 'fedora.repo'), 'w') as fd:
+            fd.write(fedora_repo)
 
         if self.extra_repository_files:
             for repo_src in self.extra_repository_files:
@@ -373,13 +477,15 @@ class Rebuilder:
         self.tempdnfcache = {}
         for rpm in set(query()):
             pkg = Package(rpm.name, rpm.version, rpm.release, rpm.arch,
-                          rpm.epoch, source_name=rpm.source_name,
+                          rpm.epoch, chksum=rpm.chksum,
+                          source_name=rpm.source_name,
                           url=rpm.remote_location())
             self.tempdnfcache[str(pkg)] = pkg
 
     def refresh_package(self, package):
         if self.tempdnfcache.get(str(package), None):
             # TODO: better handling of multiple properties
+            package.chksum = self.tempdnfcache[str(package)].chksum
             package.url = self.tempdnfcache[str(package)].url
             package.source_name = self.tempdnfcache[str(package)].source_name
             return
@@ -389,10 +495,8 @@ class Rebuilder:
 
         # TODO: We need to ensure to get signed package from koji, either by
         #  direct download or by reconstructed RPM with detached signature
-        rpmfname = pathinfo.signed(
-            package.to_dict(), self.buildinfo.get_fedora_keyid())
         rpminfo = kojicli.getRPM(package.to_rpmfname())
-        if not rpmfname or not rpminfo:
+        if not rpminfo:
             return
         # we need to determinate the source package for the baseurl
         if not rpminfo.get('buildroot_id', None):
@@ -403,43 +507,44 @@ class Rebuilder:
         srcpkg = parsePkg(task['request'][0].split('/')[-1])
         if not srcpkg:
             return
+
+        signed_rpmfname = pathinfo.signed(package.to_dict(), self.buildinfo.get_fedora_keyid())
+        signed_rpmurl = os.path.join(pathinfo.build(srcpkg.to_dict()), signed_rpmfname)
+
+        rpmfname = pathinfo.rpm(package.to_dict())
         rpmurl = os.path.join(pathinfo.build(srcpkg.to_dict()), rpmfname)
-        if self.get_response(rpmurl).ok:
+        sighdr_rpmfname = pathinfo.sighdr(package.to_dict(), self.buildinfo.get_fedora_keyid())
+        sighdr_rpmurl = os.path.join(pathinfo.build(srcpkg.to_dict()), sighdr_rpmfname)
+
+        if self.get_response(signed_rpmurl).ok:
+            package.url = signed_rpmurl
+        elif self.get_response(rpmurl).ok and self.get_response(sighdr_rpmurl):
             package.url = rpmurl
+            package.sighdr_url = sighdr_rpmurl
 
     @staticmethod
     def get_rpm_sign_keyid(rpmfname):
         try:
             sighdr = koji.rip_rpm_sighdr(rpmfname)
-            sigkeyid = koji.get_sighdr_key(sighdr).upper()
-            return sigkeyid
+            sigkeyid = koji.get_sighdr_key(sighdr)
+            if sigkeyid:
+                return sigkeyid.upper()
         except koji.GenericError as e:
             raise RebuilderException(
                 "Failed to get RPM signature keyid: {}".format(str(e)))
 
+    @staticmethod
+    def splice_rpm_sighdr(sighdr, rpmfname):
+        try:
+            with open(sighdr, 'rb') as f:
+                sig = f.read()
+            reassembled_rpm = koji.splice_rpm_sighdr(sig, rpmfname)
+            shutil.move(reassembled_rpm, rpmfname)
+        except koji.GenericError as e:
+            raise RebuilderException(
+                "Failed to reassemble RPM: {}".format(str(e)))
+
     def get_build_dependencies(self):
-        flist = os.path.join(self.urlsdir, "{}.list".format(self.buildinfo))
-        os.makedirs(self.urlsdir, exist_ok=True)
-
-        urls = []
-        # Check if we already have a local copy of urls
-        if os.path.exists(flist):
-            with open(flist) as fd:
-                urls = fd.read().strip('\n').split('\n')
-        else:
-            for builddep in self.buildinfo.build_depends:
-                logger.debug(
-                    "Fetching build dependency url: {}".format(builddep))
-                self.refresh_package(builddep)
-                if not builddep.url:
-                    raise RebuilderException(
-                        "Cannot get url: {}".format(builddep))
-                urls.append(builddep.url)
-
-            # We create a local copy of fetched URL in case of retry
-            with open(flist, "w") as fd:
-                fd.write('\n'.join(urls))
-
         # TODO: refactor/improve notably exception
         # Download RPMs
         gpg_env = OpenPGPEnvironment()
@@ -452,18 +557,31 @@ class Rebuilder:
             # short keyid format
             allowed_keys = [key[-8:] for key in gpg_env.list_keys()]
             os.makedirs(self.rpmsdir, exist_ok=True)
-            for rpmurl in urls:
-                rpmfname = os.path.join(self.rpmsdir, os.path.basename(rpmurl))
+
+            for builddep in self.buildinfo.build_depends:
+                logger.debug(
+                    "Fetching build dependency url: {}".format(builddep))
+                self.refresh_package(builddep)
+                if not builddep.url:
+                    raise RebuilderException(
+                        "Cannot get url: {}".format(builddep))
+                rpmfname = os.path.join(self.rpmsdir, os.path.basename(builddep.url))
                 rpmfname_UNTRUSTED = rpmfname + '.UNTRUSTED'
                 self.required_rpms.append(rpmfname)
                 if os.path.exists(rpmfname):
                     logger.debug(
                         "Already downloaded and verified: {}".format(rpmfname))
                     continue
-                self.download(rpmurl, rpmfname_UNTRUSTED, force=True)
+                self.download(builddep.url, rpmfname_UNTRUSTED, force=True)
+                if builddep.sighdr_url:
+                    sigfname = os.path.join(self.rpmsdir, os.path.basename(builddep.sighdr_url))
+                    self.download(builddep.sighdr_url, sigfname)
+                    self.splice_rpm_sighdr(sigfname, rpmfname_UNTRUSTED)
+
                 if self.get_rpm_sign_keyid(rpmfname_UNTRUSTED) not in allowed_keys:
                     raise RebuilderException(
                         "Failed to verify RPM signature: {}".format(rpmfname))
+
                 os.rename(rpmfname_UNTRUSTED, rpmfname)
         except RebuilderException as e:
             raise RebuilderException(str(e))
@@ -492,11 +610,10 @@ class Rebuilder:
 
     def get_source_rpm(self):
         src_pkg = self.buildinfo.package
-        self.refresh_package(src_pkg)
-
-        os.makedirs(self.srpmsdir, exist_ok=True)
         src_rpm = os.path.join(self.srpmsdir, src_pkg.to_rpmfname())
         if not os.path.exists(src_rpm):
+            os.makedirs(self.srpmsdir, exist_ok=True)
+            self.refresh_package(src_pkg)
             self.download(src_pkg.url, src_rpm)
 
     def gen_mock_config(self, output):
@@ -550,12 +667,12 @@ enabled=1
         with open(mock_config_file, 'w') as fd:
             fd.write(mock_config)
 
-    def mock(self, output, new_buildinfo_file):
+    def mock(self, output):
         self.gen_mock_config(output)
         # rebuild
         cmd = [
             'env', '-i', 'PATH=/usr/sbin:/usr/bin:/sbin:/bin',
-            'mock', '--no-cleanup-after',
+            'mock',
             '-r', os.path.join(output, 'mock.cfg'),
             '--resultdir', output,
             '--rebuild', os.path.join(
@@ -564,76 +681,9 @@ enabled=1
         logger.debug(' '.join(cmd))
         subprocess.run(cmd, check=True)
 
-        # create buildinfo
-        cmd = [
-            'env', '-i', 'PATH=/usr/sbin:/usr/bin:/sbin:/bin',
-            'mock', '-q', '-r', os.path.join(output, 'mock.cfg'),
-            '--plugin-option=bind_mount:dirs=[("{}", "/scripts")]'.format(
-                os.path.join(os.path.dirname(__file__), 'scripts')), '--chroot',
-            '/scripts/rpmbuildinfo /builddir/build/SRPMS/{}'.format(
-                self.buildinfo.package.to_rpmfname())
-        ]
-        logger.debug(' '.join(cmd))
-        subprocess.run(cmd, check=True)
-
-        # copy buildinfo to output
-        # TODO: check why chaining --chroot and --copyout has issue with paths
-        cmd = [
-            'env', '-i', 'PATH=/usr/sbin:/usr/bin:/sbin:/bin',
-            'mock', '-q', '-r', os.path.join(output, 'mock.cfg'), '--copyout',
-            '/builddir/build/SRPMS/{}'.format(
-                os.path.basename(new_buildinfo_file)),
-            '{}'.format(output)
-        ]
-        logger.debug(' '.join(cmd))
-        subprocess.run(cmd, check=True)
-
-        # cleanup
-        cmd = [
-            'env', '-i', 'PATH=/usr/sbin:/usr/bin:/sbin:/bin',
-            'mock', '-q', '-r', os.path.join(output, 'mock.cfg'), '--clean'
-        ]
-        logger.debug(' '.join(cmd))
-        subprocess.run(cmd, check=True)
-
-    def verify_checksums(self, new_buildinfo):
-        files = [f for f in self.buildinfo.checksums.keys() if
-                 not f.endswith('.dsc')]
-        new_files = new_buildinfo.checksums.keys()
-
-        if len(files) != len(new_files):
-            logger.debug("old buildinfo: {}".format(' '.join(files)))
-            logger.debug("new buildinfo: {}".format(' '.join(new_files)))
-            raise RebuilderException(
-                "New buildinfo contains a different number of files")
-
-        status = True
-        for f in files:
-            cur_status = True
-            for prop in self.buildinfo.checksums[f].keys():
-                if prop == "size":
-                    f_size = self.buildinfo.checksums[f]["size"]
-                    if f_size != new_buildinfo.checksums[f]["size"]:
-                        logger.error("Size differs for {}".format(f))
-                        # logger.debug("{} size: {}".format(f, f_size))
-                        cur_status = False
-                if prop not in new_buildinfo.checksums[f].keys():
-                    raise RebuilderException(
-                        "{} is not used in both buildinfo files".format(prop))
-                if self.buildinfo.checksums[f][prop] != \
-                        new_buildinfo.checksums[f][prop]:
-                    logger.error("Value of {} differs for {}".format(prop, f))
-                    cur_status = False
-            if cur_status:
-                logger.info("{}: OK".format(f))
-            else:
-                status = False
-
-        if not status:
-            raise RebuilderException
-
-    def generate_intoto_metadata(self, output, new_buildinfo):
-        new_files = new_buildinfo.checksums.keys()
+    def generate_intoto_metadata(self, output):
+        new_files = [os.path.basename(f)
+                     for f in glob.glob(os.path.join(output, '*.rpm'))]
         cmd = ["in-toto-run", "--step-name=rebuild", "--no-command",
                "--products"] + list(new_files)
         if self.gpg_sign_keyid:
@@ -654,29 +704,13 @@ enabled=1
                 "Cannot determinate builder host architecture")
         return builder_architecture
 
-    def run(self, builder, output, no_checksums_verification=False):
-        # Predict new buildinfo name created by builder
-        # Based on dpkg/scripts/dpkg-genbuildinfo.pl
-        if self.buildinfo.architecture:
-            build_arch = self.get_host_architecture()
-        elif self.buildinfo.build_archall:
-            build_arch = "noarch"
-        else:
-            raise RebuilderException("Nothing to build")
-
-        new_buildinfo_file = "{}/{}-{}.{}.buildinfo".format(
-            output, self.buildinfo.source, self.buildinfo.version, build_arch)
-        logger.debug("New buildinfo file: {}".format(new_buildinfo_file))
-        if os.path.exists(new_buildinfo_file):
-            raise RebuilderException(
-                "Refusing to overwrite existing buildinfo file")
-
+    def run(self, builder, output):
         # Stage 1: Parse provided buildinfo file and setup the rebuilder
         try:
             os.makedirs(output, exist_ok=True)
             self.prepare_dnfcache()
-            self.get_build_dependencies()
             self.get_source_rpm()
+            self.get_build_dependencies()
             self.generate_local_repository(output)
         except (FileExistsError, requests.exceptions.ConnectionError) as e:
             raise RebuilderException(
@@ -693,22 +727,12 @@ enabled=1
             return
         if builder == "mock":
             try:
-                self.mock(output, new_buildinfo_file)
+                self.mock(output)
             except subprocess.CalledProcessError as e:
                 RebuilderException("mock failed: {}".format(str(e)))
 
         # Stage 3: Everything post-build actions with rebuild artifacts
-        new_buildinfo = BuildInfo(realpath(new_buildinfo_file))
-        try:
-            self.verify_checksums(new_buildinfo)
-            logger.info("Checksums: OK")
-        except RebuilderException:
-            msg = "Checksums: FAIL"
-            if no_checksums_verification:
-                logger.error(msg)
-            else:
-                raise RebuilderException(msg)
-        self.generate_intoto_metadata(output, new_buildinfo)
+        self.generate_intoto_metadata(output)
 
 
 def get_args():
@@ -759,12 +783,6 @@ def get_args():
     parser.add_argument(
         "--proxy",
         help="Proxy address to use."
-    )
-    parser.add_argument(
-        "--no-checksums-verification",
-        help="Don't fail on checksums verification between original and"
-             " rebuild packages",
-        action="store_true",
     )
     parser.add_argument(
         "--verbose",
@@ -831,8 +849,7 @@ def main():
             gpg_verify_key=args.gpg_verify_key,
             proxy=args.proxy
         )
-        rebuilder.run(builder=args.builder, output=realpath(args.output),
-                      no_checksums_verification=args.no_checksums_verification)
+        rebuilder.run(builder=args.builder, output=realpath(args.output))
     except RebuilderException as e:
         logger.error(str(e))
         return 1

@@ -1,9 +1,9 @@
-Format: 0.2-rpm
+Format: 0.3-rpm
 Build-Architecture: x86_64
 Source: qubes-core-qrexec
-Version: 4.1.13-1.fc32
+Version: 4.1.13
+Release: 1.fc32
 Architecture: x86_64
-Binary: qubes-core-qrexec-libs qubes-core-qrexec-debugsource qubes-core-qrexec-devel qubes-core-qrexec qubes-core-qrexec-libs-debuginfo
 Build-Origin: fedora
 Build-Date: Sun, 10 Jan 2021 03:35:59 +0100
 Build-Path: /builddir/build/BUILD
@@ -212,17 +212,3 @@ Installed-Build-Depends:
  zstd-1.4.7-1.fc32.x86_64
 Environment:
  LANG="C.UTF-8"
-Checksums-Sha256:
- f100c8d5244442438ac11f8ee8b257b59ea4f2a8e5fd187c8aa155c8ac50e2a5 157775 qubes-core-qrexec-4.1.13-1.fc32.src.rpm
- 55eb8df9239f242bf0498c3e0747e3212a003d2de31a37abeaf834e512ce29b8 29001 qubes-core-qrexec-libs-4.1.13-1.fc32.x86_64.rpm
- e5bbc3f91b72af0d7c1918d05c2192665fd24a1ba6f27bfe78ceb94d567ff0f6 28413 qubes-core-qrexec-debugsource-4.1.13-1.fc32.x86_64.rpm
- dd93256583794a0f00ad1559f726d7870cac08d634a9c35acfc2b7a3f3783993 17430 qubes-core-qrexec-devel-4.1.13-1.fc32.x86_64.rpm
- 2dc3a6118582be113436d1206cfc6b2e127ea8510653c9009980a265703a806a 170437 qubes-core-qrexec-4.1.13-1.fc32.x86_64.rpm
- cdd8f09cb2534fe7d8d9e7bfc83c5ee99ed474e94ebda556ecfa1752fd65ea11 47674 qubes-core-qrexec-libs-debuginfo-4.1.13-1.fc32.x86_64.rpm
-Signed-Checksums-Sha256:
- a435b4504a8cc31dee54bb07bc22a5c826e90eb0cc0c5704edff99f5211d4c91 157775 qubes-core-qrexec-4.1.13-1.fc32.src.rpm
- 955e9f72c268c5f549dc2060b2e6ce9ca77848521b1a8eee3d294001eff77ce4 29001 qubes-core-qrexec-libs-4.1.13-1.fc32.x86_64.rpm
- 4e71bd0936007af3495b9e4a26bcf7ddc83d98e1357aa75a2fc96275a9f70ad1 28413 qubes-core-qrexec-debugsource-4.1.13-1.fc32.x86_64.rpm
- 6f120d8b5cc06eda84819b65d7467c967dbb9db53277a1ccc516782eb9a87305 17430 qubes-core-qrexec-devel-4.1.13-1.fc32.x86_64.rpm
- 86f7b22683ad24cd2173da1a80ca06cd775dd260488785ebeefe28b56c5cb9e7 170437 qubes-core-qrexec-4.1.13-1.fc32.x86_64.rpm
- 7b499f04101de695b130c0cea4a01fa7bd2a883aec900dfa74b627b439a59fef 47674 qubes-core-qrexec-libs-debuginfo-4.1.13-1.fc32.x86_64.rpm

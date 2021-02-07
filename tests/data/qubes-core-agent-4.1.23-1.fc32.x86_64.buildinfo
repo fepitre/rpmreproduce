@@ -1,12 +1,9 @@
------BEGIN PGP SIGNED MESSAGE-----
-Hash: SHA256
-
-Format: 0.2-rpm
+Format: 0.3-rpm
 Build-Architecture: x86_64
 Source: qubes-core-agent
-Version: 4.1.23-1.fc32
+Version: 4.1.23
+Release: 1.fc32
 Architecture: x86_64
-Binary: qubes-core-agent-dom0-updates python3-dnf-plugins-qubes-hooks qubes-core-agent-passwordless-root qubes-core-agent-systemd qubes-core-agent-networking qubes-core-agent-nautilus qubes-core-agent-debugsource qubes-core-agent-thunar qubes-core-agent-network-manager qubes-core-agent-debuginfo python2-dnf-plugins-qubes-hooks qubes-core-agent 
 Build-Origin: fedora
 Build-Date: Tue, 02 Feb 2021 16:50:19 +0100
 Build-Path: /builddir/build/BUILD
@@ -235,47 +232,3 @@ Installed-Build-Depends:
  zstd-1.4.7-1.fc32.x86_64
 Environment:
  LANG="C.UTF-8"
-Checksums-Sha256:
- ea2c68ddad3946507d418332cc71ddaccf5ea11c0f95adaf323048f5869cbbc3 187485 qubes-core-agent-4.1.23-1.fc32.src.rpm
- e9526ae8de9cf532fb3e1ebe4cb7e17c14edd3008a980c71ad32a28a43ebff8e 15241 qubes-core-agent-dom0-updates-4.1.23-1.fc32.x86_64.rpm
- 65e29ae42d2bd51c7795b0153fa31fc0426fca39e7f44bb9f1a250d571492f14 15600 python3-dnf-plugins-qubes-hooks-4.1.23-1.fc32.x86_64.rpm
- c847109154c1f554cf34030e7bf64fd6d26a721b4fe64ff14d88df4cd537f661 15805 qubes-core-agent-passwordless-root-4.1.23-1.fc32.x86_64.rpm
- 1d7b0a5c8a4bf88c2cba73ccd7fac760298cbf0904165358ff1b51168c63c527 29395 qubes-core-agent-systemd-4.1.23-1.fc32.x86_64.rpm
- d8623e30c4b391ddaffef9f520832959ca62c845dba25728f07b99f4fd9884af 27301 qubes-core-agent-networking-4.1.23-1.fc32.x86_64.rpm
- 422c840f4195ee3a485ecdb119a13545de2c35a590899f2bedcba906d1fba83d 15680 qubes-core-agent-nautilus-4.1.23-1.fc32.x86_64.rpm
- cf4e84f70cacc2588be01c2ce51282b9ef33c553e2b267fbcc730eb2fc1341f5 27412 qubes-core-agent-debugsource-4.1.23-1.fc32.x86_64.rpm
- 340b866fb4549eeb0815ef5459f9f5bcf3fd269ac6290ee94a88ec40467585e7 14967 qubes-core-agent-thunar-4.1.23-1.fc32.x86_64.rpm
- d5c782e23b446e5c5efe4e67796ca1078b1e3970fb11fc690fed050fb874fa2f 15622 qubes-core-agent-network-manager-4.1.23-1.fc32.x86_64.rpm
- cd22d7dcaa9aac7f3af477601a54f9b82205fffe2106ca10a5b5af3fb0b0ee36 51732 qubes-core-agent-debuginfo-4.1.23-1.fc32.x86_64.rpm
- adddac212efe9d4bb6b11ef1450f11345d15747203d2c0138519bdf46e3d1980 15241 python2-dnf-plugins-qubes-hooks-4.1.23-1.fc32.x86_64.rpm
- 35e597a87e745cf78afab06e6414c1f9b7c0a1725ee614f9cac89d866f05c602 132386 qubes-core-agent-4.1.23-1.fc32.x86_64.rpm
-Signed-Checksums-Sha256:
- cfefd7396e94237af804539105ac1176e5a651ff47e0ebecaff7124b0caf72c7 187485 qubes-core-agent-4.1.23-1.fc32.src.rpm
- eec68ce7d361ab7e831a3c4a93b25221d2514088127aaa79d030de40ae303e0d 15241 qubes-core-agent-dom0-updates-4.1.23-1.fc32.x86_64.rpm
- ed6dfc828a515fe0855198c6a0782a015f5d31d7d4d7c92b4f86c5c2f645bb3b 15600 python3-dnf-plugins-qubes-hooks-4.1.23-1.fc32.x86_64.rpm
- 05dd5f0fca54f147fc46b997799be15b287046b73512a381ec444e76ba8b73c6 15805 qubes-core-agent-passwordless-root-4.1.23-1.fc32.x86_64.rpm
- 22b40a80a7d72f2b30ad93eaaf9dad369c1870c0f07f98434eac312853a77fe6 29395 qubes-core-agent-systemd-4.1.23-1.fc32.x86_64.rpm
- afd01d752b8906c858db8e914db57e4a2f941252466d5aac1583a8087e6238fb 27301 qubes-core-agent-networking-4.1.23-1.fc32.x86_64.rpm
- 4ee853c69109dc435b62dc1e2e6f27b90a95fe6821a53e02faf8bb5b3756567b 15680 qubes-core-agent-nautilus-4.1.23-1.fc32.x86_64.rpm
- 73656a3e0601a3ee52a7ee6a6d8aa3c5cbb6a7c3aa0644f66089e7bf5d14017b 27412 qubes-core-agent-debugsource-4.1.23-1.fc32.x86_64.rpm
- fe9861f318245797e5d6c1f6a42bf09b2972c39cd817add488d4a5e25ddc8e46 14967 qubes-core-agent-thunar-4.1.23-1.fc32.x86_64.rpm
- 68204b87f1cd6cfb93c5b12f44de096fd2d98f46ae94a5f975f994e85092c4b3 15622 qubes-core-agent-network-manager-4.1.23-1.fc32.x86_64.rpm
- c5b397232c42eb1cea1009826e6df7b162e70b8c7b9480df1128bc9c92099e26 51732 qubes-core-agent-debuginfo-4.1.23-1.fc32.x86_64.rpm
- d39995bb316c0fa6414a29412bc71965366660972e9a8b3f06e2e473931f86ae 15241 python2-dnf-plugins-qubes-hooks-4.1.23-1.fc32.x86_64.rpm
- 35bd529ab07a39a0753a94acdb53c4a26d0abca4ada2de8b8c0000fc49f35a8f 132386 qubes-core-agent-4.1.23-1.fc32.x86_64.rpm
------BEGIN PGP SIGNATURE-----
-
-iQIzBAEBCAAdFiEEWBekOyg95akYGlIuGEh5L54nlekFAmAZdakACgkQGEh5L54n
-lemBphAApfBo3n6HfRjothIdJuRvCwKf5mIJ0JFGLLqctI7GZZJUVuia3cZX2r2J
-Uvvb2zfWQ9h5KSGF4c9LB7aKITtZlUJ0Qav8QG6yB3oR8ZrqyMV2C1pzodlr8IY5
-XbPSU1ghyDl/zywMvnPFBIhmCdhVPwOwLL2r6G10VSOkeLN6zXFhCneNWoeUsJ1I
-Sxz/ZbE8ve1iCDw9F1BqjRoJMVO/NTzkj0awi+9ongeHQjbG5CdNTmpkon2TDiJc
-rLwDKWv4m2P586W/zK4II14/YVev0JVuH9qk/ePAWCCUYyakJJRQ5s77QWPrk6qq
-HcF7Tns+5OmPjKsx3tctVRml+Z2R3zOtSFKDUchPUBC2eCK2IksDNMDChfUd3iWn
-OGD+QteXWmEqqtfZJLUMCzLGlBRSGNn698/9Qg1vODX/E4slnasoROUQquEhoAVg
-eCP3oZCgrcFSe/1COHD51E06KaXCFFAZTfVLBQ7MKBPngM3ikA3WxqCCa88K52P5
-8q7H3wR9tokHSss61c9lNFXlZh01PzkqG5+XDoQapU5Pu1Ym6pWP1xkTGXNqR7fX
-oxJXgPYxgaybSskIKIyhSpLevaSuVFJlqT53DQusZjXOljyBPWu8/vFo8wSbSRvz
-+ud+v+qaOh2A+tirxx3NdMtEiU1GZn6g9hSt4F4+Y35Fn68XhJ8=
-=p4N4
------END PGP SIGNATURE-----
