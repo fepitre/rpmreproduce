@@ -445,8 +445,9 @@ class Rebuilder:
         gpg_env = OpenPGPEnvironment()
         try:
             gpg_env.import_key(self.buildinfo.get_fedora_keyfile())
-            for key in self.extra_repository_keys:
-                gpg_env.import_key(key)
+            if self.extra_repository_keys:
+                for key in self.extra_repository_keys:
+                    gpg_env.import_key(key)
 
             # short keyid format
             allowed_keys = [key[-8:] for key in gpg_env.list_keys()]
