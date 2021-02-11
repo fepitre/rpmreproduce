@@ -33,10 +33,13 @@ optional arguments:
   --debug               Display logger debug messages
 ```
 
-`rpmreproduce` can parse buildinfo file having GPG signature and verify its signature with provided key file.
-
 #### EXAMPLES
 
+```
+$ ./rpmreproduce.py --debug --output=./artifacts --builder=mock \
+    tests/data/terminator-buildinfo-2.1.0-1.fc32.noarch.rpm
+```
+This subpackage has been created with the help of proposed RPM change: https://github.com/rpm-software-management/rpm/pull/1532. Former form using directly buildinfo file can still be used:
 ```
 $ ./rpmreproduce.py --debug --output=./artifacts --builder=mock \
     --extra-repository-file tests/repos/qubes-r4.repo \

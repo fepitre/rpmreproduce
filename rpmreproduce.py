@@ -304,6 +304,7 @@ class Rebuilder:
         else:
             buildinfo_file = realpath(buildinfo_file)
 
+        # TODO: add RPM buildinfo subpackage signature check; drop legacy?
         # if gpg_verify and gpg_verify_key:
         #     gpg_env = OpenPGPEnvironment()
         #     try:
